@@ -1,0 +1,61 @@
+networks:
+  metabase-network:
+    driver: bridge
+
+services:
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: on-failure:5
+    hostname: tunnel
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run
+    networks:
+      - metabase-network
+    depends_on:
+      - metabase
+
+  metabase:
+    image: metabase/metabase:latest
+    restart: on-failure:5
+    hostname: metabase
+    user: ${UID}:${GID}
+    volumes:
+      - /dev/urandom:/dev/random:ro
+    # ports:
+    #   - 3000:3000
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabaseappdb
+      MB_DB_PORT: 5432
+      MB_DB_USER: metabase
+      MB_DB_PASS: ${POSTGRES_PASSWORD}
+      MB_DB_HOST: postgres
+      JAVA_TIMEZONE: ${TIMEZONE}
+      # MUID: ${MUID}
+      # MGID: ${MGID}
+    networks:
+      - metabase-network
+    healthcheck:
+      test: curl --fail -I http://localhost:3000/api/health || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-latest}
+    restart: on-failure:5
+    hostname: postgres
+    environment:
+      POSTGRES_USER: metabase
+      POSTGRES_DB: metabaseappdb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+    networks:
+      - metabase-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
